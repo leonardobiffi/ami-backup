@@ -1,0 +1,48 @@
+service: ami-backup-${env:REGION}
+useDotenv: true
+
+provider:
+  name: aws
+  runtime: python3.8
+  memorySize: 128
+  timeout: 900
+  region: ${env:REGION}
+  iam:
+    role:
+      statements:
+        - Effect: "Allow"
+          Action:
+            - "ec2:DeregisterImage"
+            - "ec2:DescribeInstances"
+            - "ec2:DeleteTags"
+            - "ec2:CreateTags"
+            - "ec2:DescribeSnapshotAttribute"
+            - "ec2:DescribeInstanceAttribute"
+            - "logs:*"
+            - "ec2:CreateImage"
+            - "ec2:DescribeSnapshots"
+            - "ec2:DescribeInstanceCreditSpecifications"
+            - "ec2:DescribeImages"
+            - "ec2:DescribeImageAttribute"
+            - "ec2:DescribeInstanceStatus"
+          Resource:
+            - "*"
+        - Effect: "Allow"
+          Action:
+            - "ec2:DeleteSnapshot"
+            - "ec2:CreateSnapshots"
+            - "ec2:CreateSnapshot"
+          Resource:
+            - "arn:aws:ec2:*:*:instance/*"
+            - "arn:aws:ec2:*::snapshot/*"
+            - "arn:aws:ec2:*:*:volume/*"
+
+functions:
+  function:
+    handler: lambda_function.lambda_handler
+    environment:
+      CUSTOMER: ${env:CUSTOMER}
+      REGION: ${env:REGION}
+      RETENTION_DAYS: ${env:RETENTION_DAYS}
+    events:
+      - schedule: ${env:CRON}

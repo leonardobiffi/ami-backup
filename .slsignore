@@ -1,0 +1,11 @@
+# it works like a .gitignore
+# for sls
+README.md
+*.log
+
+# ignore node_modules
+node_modules
+
+.env.example
+.git/*
+__tests__/*

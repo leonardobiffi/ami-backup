@@ -1,19 +1,21 @@
 #! /usr/bin/python
 
-import argparse
 import datetime
 import json
-from urllib import request, parse
+from urllib import request
 import json
 import boto3
 import os
 from dateutil.tz import UTC
 
-CUSTOMER=os.environ["CUSTOMER"]
-REGION=os.environ["REGION"]
-RETENTION_DAYS=int(os.environ["RETENTION_DAYS"])
+CUSTOMER = os.environ["CUSTOMER"]
+REGION = os.environ["REGION"]
+RETENTION_DAYS = int(os.environ["RETENTION_DAYS"])
+SLACK_ENABLED = os.environ["SLACK_ENABLED"]
+SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
 
-def slack(message, channel, webhookurl):
+
+def slack(message):
     """
     This function is used to post message to slack.
     """
@@ -21,15 +23,14 @@ def slack(message, channel, webhookurl):
 
     try:
         json_data = json.dumps(post)
-        req = request.Request(webhookurl,
-                              data=json_data.encode('ascii'),
-                              headers={'Content-Type': 'application/json'}) 
+        req = request.Request(SLACK_WEBHOOK_URL, data=json_data.encode(
+            'ascii'), headers={'Content-Type': 'application/json'})
         resp = request.urlopen(req)
     except Exception as em:
         print("EXCEPTION: " + str(em))
 
 
-def delete_ami(image_jsonresponse, days_older, slack_opt, channel_name, webhook_url, ec2, region):
+def delete_ami(image_jsonresponse, days_older, ec2, region):
     """
     This function deletes AMI older than number of days to keep AMI.
     ex. The tag Key:RetentionDays, Value:7 will retein AMI for 7 days, ignoring default in lambda_handler
@@ -43,7 +44,7 @@ def delete_ami(image_jsonresponse, days_older, slack_opt, channel_name, webhook_
             retention_days = days_older
         except ValueError:
             retention_days = days_older
-        except Exception as e:    
+        except Exception as e:
             retention_days = days_older
 
         right_now_days_ago = datetime.datetime.today() - datetime.timedelta(days=retention_days - 1)
@@ -56,7 +57,7 @@ def delete_ami(image_jsonresponse, days_older, slack_opt, channel_name, webhook_
             snap_list = []
 
             for j in i['BlockDeviceMappings']:
-                if 'Ebs'in j:
+                if 'Ebs' in j:
                     snap_list.append(j['Ebs']['SnapshotId'])
 
             try:
@@ -67,15 +68,16 @@ def delete_ami(image_jsonresponse, days_older, slack_opt, channel_name, webhook_
                     print("AMI snapshot ID deleted " + snap_list[k])
             except Exception as e:
                 print(e)
-                message = 'Cliente: '+ CUSTOMER +'\nError while deleting image\nImageId:'+image_id+' \
-                                  \nRegion:'+region+'\nException:'+str(e)
-                if slack_opt == 'true':
-                    slack(message, channel_name, webhook_url)
+                message = 'Cliente: ' + CUSTOMER + '\nError while deleting image\nImageId:'+image_id+' \
+                        \nRegion:'+region+'\nException:'+str(e)
+                
+                if SLACK_ENABLED == "true":
+                    slack(message)
                 else:
                     print(message)
 
 
-def create_ami(instance_jsonresponse, slack_opt, channel_name, webhook_url, ec2, region):
+def create_ami(instance_jsonresponse, ec2, region):
     """
     This function creates new AMI with tags for the instance which got backup tag.
     """
@@ -97,9 +99,10 @@ def create_ami(instance_jsonresponse, slack_opt, channel_name, webhook_url, ec2,
 
             try:
                 image = instance.create_image(
-                        Name=dscrip+ "-" +str(datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S.%f')),
-                        NoReboot=True
-                    )
+                    Name=dscrip + "-" +
+                    str(datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S.%f')),
+                    NoReboot=True
+                )
 
                 for l in range(len(tag_key_list)):
                     tag = image.create_tags(
@@ -114,26 +117,29 @@ def create_ami(instance_jsonresponse, slack_opt, channel_name, webhook_url, ec2,
                 tag = image.create_tags(
                     Tags=[
                         {
-                            'Key': 'DELETE_ON', #Tag required to fetch all the AMI's to delete.
+                            # Tag required to fetch all the AMI's to delete.
+                            'Key': 'DELETE_ON',
                             'Value': 'yes'
                         },
                         {
-                            'Key': 'SNAPSHOT_TAG', #Tag required to fetch all the snapshots associated to AMI in order to tag those snapshots.
+                            # Tag required to fetch all the snapshots associated to AMI in order to tag those snapshots.
+                            'Key': 'SNAPSHOT_TAG',
                             'Value': 'yes'
                         }
                     ]
                 )
             except Exception as e:
                 print(e)
-                message = 'Cliente: '+ CUSTOMER +'\nError while creating image of instance\n\nInstanceId:'+ iid +' \
-                            \n\n Region:'+ region +'\n\n Exception:'+ str(e)
-                if slack_opt == 'true':
-                    slack(message, channel_name, webhook_url)
+                message = 'Cliente: ' + CUSTOMER + '\nError while creating image of instance\n\nInstanceId:' + iid + ' \
+                        \nRegion:' + region + '\n\n Exception:' + str(e)
+                
+                if SLACK_ENABLED == "true":
+                    slack(message)
                 else:
                     print(message)
 
 
-def tag_snapshots(new_image_jsonresponse, slack_opt, channel_name, webhook_url, client, region):
+def tag_snapshots(new_image_jsonresponse, client, region):
     """
     This function tags all the snapshots which are associated to new AMI's created.
     """
@@ -150,7 +156,7 @@ def tag_snapshots(new_image_jsonresponse, slack_opt, channel_name, webhook_url, 
                 snap_tag_value_list.append(k['Value'])
 
         for j in i['BlockDeviceMappings']:
-            if 'Ebs'in j and 'SnapshotId' in j['Ebs']:
+            if 'Ebs' in j and 'SnapshotId' in j['Ebs']:
                 snapid = j["Ebs"]["SnapshotId"]
 
             try:
@@ -168,17 +174,18 @@ def tag_snapshots(new_image_jsonresponse, slack_opt, channel_name, webhook_url, 
                     )
             except Exception as e:
                 print(e)
-                message = 'Cliente: '+ CUSTOMER +'\nError while creating tags on snapshots of AMI\nAMIId:'+image_id+' \
-                            \nRegion:'+region+'\nException:'+ str(e)
-                if slack_opt == 'true':
-                    slack(message, channel_name, webhook_url)
+                message = 'Cliente: ' + CUSTOMER + '\nError while creating tags on snapshots of AMI\nAMIId:'+image_id+' \
+                        \nRegion:'+region+'\nException:' + str(e)
+                
+                if SLACK_ENABLED == "true":
+                    slack(message)
                 else:
                     print(message)
 
         delete_tag = client.delete_tags(
             Resources=[
                 image_id,
-                ],
+            ],
             Tags=[
                 {
                     'Key': 'SNAPSHOT_TAG',
@@ -188,7 +195,7 @@ def tag_snapshots(new_image_jsonresponse, slack_opt, channel_name, webhook_url, 
         )
 
 
-def amibkp(region, days_del, slack_req, slack_channel, slack_webhook):
+def amibkp(region, days_del):
     """
     This function is the crucial function,
     fetches all the instances which has tag Key:Backup, Value:true and creates AMI in a loop,
@@ -201,15 +208,6 @@ def amibkp(region, days_del, slack_req, slack_channel, slack_webhook):
           AWS region code.
     days: integer
           Number of days to keep AMI's before deleting.
-    slack: string
-          Optional argument.
-          Passing this parameter as "true" will post the execption to slack if any.
-    slack_channel: String
-          Slack channel to where exceptions has to be posted
-          Depends on the previous parameter "slack", this is required if slack is true.
-    webhookurl: string
-          Slack webhookurl to identify to which slack team exeception has to be posted?
-          Depends on the previous parameter "slack", this is required if slack is true.
     Returns
     -------
     list
@@ -222,38 +220,36 @@ def amibkp(region, days_del, slack_req, slack_channel, slack_webhook):
         Filters=[
             {
                 'Name': 'tag:DELETE_ON',
-                'Values': [
-                    'yes',
-                ]
+                'Values': ['yes']
             },
         ]
     )
-    delete_ami(image_response, days_del, slack_req, slack_channel, slack_webhook, ec2, region)
+
+    delete_ami(image_response, days_del, ec2, region)
 
     instance_response = client.describe_instances(
         Filters=[
             {
-                'Name': 'tag:Backup', #Tag trued to identify list of Instances to be backed up.
-                'Values': [
-                    'true',
-                    'True'
-                ]
+                # Tag trued to identify list of Instances to be backed up.
+                'Name': 'tag:Backup',
+                'Values': ['true', 'True']
             }
         ]
     )
-    create_ami(instance_response, slack_req, slack_channel, slack_webhook, ec2, region)
+
+    create_ami(instance_response, ec2, region)
 
     new_image_response = client.describe_images(
         Filters=[
             {
                 'Name': 'tag:SNAPSHOT_TAG',
-                'Values': [
-                    'yes',
-                    ]
+                'Values': ['yes']
             },
         ]
     )
-    tag_snapshots(new_image_response, slack_req, slack_channel, slack_webhook, client, region)
+
+    tag_snapshots(new_image_response, client, region)
+
 
 def lambda_handler(event, context):
-    amibkp(REGION, RETENTION_DAYS, 'true', 'alerts_backup', 'https://hooks.slack.com/services/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')
+    amibkp(REGION, RETENTION_DAYS)

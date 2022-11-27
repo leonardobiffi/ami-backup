@@ -1,5 +1,8 @@
-service: ami-backup-${env:REGION}
+service: ami-backup
 useDotenv: true
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-ignore
 
 provider:
   name: aws
@@ -44,5 +47,7 @@ functions:
       CUSTOMER: ${env:CUSTOMER}
       REGION: ${env:REGION}
       RETENTION_DAYS: ${env:RETENTION_DAYS}
+      SLACK_ENABLED: ${env:SLACK_ENABLED}
+      SLACK_WEBHOOK_URL: ${env:SLACK_WEBHOOK_URL}
     events:
       - schedule: ${env:CRON}

@@ -4,6 +4,14 @@
 
 Esta função é para criar a AMI como um backup para todas as instâncias necessárias com base nas tags e excluir as AMI mais antigas.
 
+## Instalar Serverless Framework
+
+https://www.serverless.com/framework/docs/install-standalone
+
+```sh
+curl -o- -L https://slss.io/install | bash
+```
+
 ## Pré-requisitos
 
 * A função Lambda usada requer acesso de leitura EC2, acesso total à AMI e acesso à marcação de recursos, essas permissões estão no arquivo PolicyAMIBackup.json 
@@ -33,14 +41,6 @@ Depois que as capturas instantâneas forem identificadas, a tag SNAPSHOT_TAG = y
 
 Para realizar o deploy da lambda no Cliente é necessário ter o awscli configurado com as Secret Keys da conta do cliente.
 
-### Dependências
-
-Instalar plugins do serverless framework
-
-```bash
-serverless plugin install -n serverless-dotenv-plugin
-```
-
 ### Configurar arquivo .env
 
 Criar cópia do arquivo .env.example, como .env.prod
@@ -51,6 +51,13 @@ cp .env.example .env.prod
 
 Adicionar as informações para o Cliente que vai realizar o Deploy da função
 
+### Dependências
+
+Instalar plugins do serverless framework
+
+```bash
+serverless plugin install -n serverless-dotenv-plugin --stage prod
+```
 
 ### Deploy
 
